@@ -1,0 +1,48 @@
+# LangChain / LangGraph
+langchain>=0.3.0
+langchain-community>=0.3.0
+langchain-ollama>=0.2.0
+langgraph>=0.2.0
+langsmith>=0.1.0
+
+# API & async
+fastapi>=0.115.0
+uvicorn[standard]>=0.30.0
+websockets>=12.0
+httpx>=0.27.0
+python-multipart>=0.0.9
+
+# Validation
+pydantic>=2.8.0
+pydantic-settings>=2.4.0
+
+# Databases
+asyncpg>=0.29.0
+psycopg2-binary>=2.9.9
+sqlalchemy[asyncio]>=2.0.0
+alembic>=1.13.0
+redis[hiredis]>=5.0.0
+qdrant-client>=1.11.0
+
+# Task queue
+celery[redis]>=5.4.0
+
+# Memory
+mem0ai>=0.1.0
+
+# Code tools
+gitpython>=3.1.40
+tree-sitter>=0.23.0
+python-docx>=1.1.0
+
+# Observability
+opentelemetry-api>=1.27.0
+opentelemetry-sdk>=1.27.0
+prometheus-fastapi-instrumentator>=7.0.0
+
+# Utilities
+python-dotenv>=1.0.0
+rich>=13.8.0
+typer>=0.12.0
+pyyaml>=6.0.2
+tenacity>=8.5.0
