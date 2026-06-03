@@ -29,6 +29,7 @@ uploads/
 sandbox/
 *.zip
 outputs/
+SDLC_Agent_Execution_Plan_v1.1.md
 
 # IDE
 .vscode/settings.json
