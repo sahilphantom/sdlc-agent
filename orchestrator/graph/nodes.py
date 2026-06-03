@@ -37,7 +37,7 @@ def prd_ingestion_node(state: GraphState) -> Dict[str, Any]:
 
     # 2. Run the agent
     try:
-        # 🔧 FIX: Pass a dictionary matching the PRDInput schema
+        # Pass a dictionary matching the PRDInput schema
         loop = asyncio.get_event_loop()
         if loop.is_running():
             import concurrent.futures
@@ -60,57 +60,6 @@ def prd_ingestion_node(state: GraphState) -> Dict[str, Any]:
             "spec_json": None,
             "errors": [{"node": "prd_ingestion", "msg": str(e)}]
         }
-    """Phase 1: PRD Ingestion Agent (REAL IMPLEMENTATION)"""
-    print("🟢 [NODE EXECUTING] prd_ingestion_node (REAL LLM CALL)")
-    
-    # 1. Extract input text from state
-    input_data = state.get("input_data", {})
-    raw_text = input_data.get("content", "")
-    
-    if not raw_text:
-        print("⚠️ Warning: No input text found in state.")
-        return {"spec_json": None, "errors": [{"node": "prd_ingestion", "msg": "Empty input"}]}
-
-    # 2. Run the agent
-    # Since BaseAgent._arun is async, we need to run it in an event loop
-    # Note: In a real FastAPI app, the node would be async. 
-    # For this sync script, we use asyncio.run or a helper.
-    try:
-        # Check if we are already in an event loop (unlikely in this script)
-        loop = asyncio.get_event_loop()
-        if loop.is_running():
-            # If inside a running loop (e.g. Jupyter), we'd need a different approach
-            # But for standard python script, this path is rare.
-            import concurrent.futures
-            with concurrent.futures.ThreadPoolExecutor() as pool:
-                result = pool.submit(asyncio.run, _prd_agent.arun(raw_text)).result()
-        else:
-            result = asyncio.run(_prd_agent.arun(raw_text))
-            
-        print(f"✅ PRD Agent Success: Generated SpecJSON with {len(result.requirements)} requirements.")
-        
-        # 3. Return the artifact
-        # We convert Pydantic model to dict for the GraphState
-        return {
-            "spec_json": result.model_dump(),
-            "errors": [] # Clear errors on success
-        }
-        
-    except Exception as e:
-        print(f"🔴 PRD Agent Failed: {e}")
-        return {
-            "spec_json": None,
-            "errors": [{"node": "prd_ingestion", "msg": str(e)}]
-        }
-    """Phase 1: PRD Ingestion Agent stub."""
-    logger.info("Executing PRD Ingestion Agent (stub)")
-    return {
-        "spec_json": {
-            "requirements": ["User authentication", "CRUD operations"],
-            "acceptance_criteria": ["AC 1", "AC 2"],
-            "confidence": 0.95
-        }
-    }
 
 def architecture_design_node(state: GraphState) -> Dict[str, Any]:
     """Phase 2: Architecture Design Agent stub."""

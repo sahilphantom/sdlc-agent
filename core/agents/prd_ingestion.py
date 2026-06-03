@@ -6,10 +6,10 @@ and constraints into a SpecJSON artifact.
 """
 
 import logging
-from typing import Dict, Any
+from typing import Dict, Any, Union
 
 from langchain_core.prompts import ChatPromptTemplate
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 
 from core.agents.base import BaseAgent
 from core.llm.client import get_reasoning_model
@@ -18,7 +18,6 @@ from config.settings import settings
 
 logger = logging.getLogger(__name__)
 
-# Define an input schema to satisfy BaseAgent's input_schema requirement
 class PRDInput(BaseModel):
     input_text: str = Field(description="The raw PRD text to process.")
 
@@ -27,6 +26,8 @@ class PRDIngestionAgent(BaseAgent):
     """
     Agent responsible for Phase 1: Ingesting PRD and producing SpecJSON.
     """
+    
+    model_config = ConfigDict(extra="allow")
 
     def __init__(self):
         system_prompt = """You are an expert Technical Product Manager. 
@@ -41,7 +42,6 @@ You must extract and structure the following:
 
 Be precise, concise, and technical. If information is missing, make reasonable assumptions based on standard industry practices but flag them in 'open_questions'."""
 
-        # 🔧 FIX: Pass string literals directly to avoid AttributeError before super().__init__()
         super().__init__(
             name="prd_ingestion_agent",
             input_schema=PRDInput,
@@ -50,27 +50,25 @@ Be precise, concise, and technical. If information is missing, make reasonable a
             system_prompt=system_prompt
         )
         
-        # 1. Initialize LLM with structured output enforcement
         base_llm = get_reasoning_model(temperature=0.1)
         self.llm = base_llm.with_structured_output(SpecJSON)
         
-        # 2. Define the System Prompt
         self.prompt = ChatPromptTemplate.from_messages([
             ("system", system_prompt),
             ("human", "{input_text}"),
         ])
         
-        # 3. Create the Chain
         self.chain = self.prompt | self.llm
 
-    async def _arun(self, input_data: PRDInput) -> SpecJSON:
-        """
-        Execute the agent logic.
-        """
+    # 🔧 FIX: Accept Union[dict, PRDInput] and normalize to PRDInput
+    async def arun(self, input_data: Union[Dict[str, Any], PRDInput]) -> SpecJSON:
+        # Normalize input to PRDInput instance
+        if isinstance(input_data, dict):
+            input_data = PRDInput(**input_data)
+        
         input_text = input_data.input_text
         logger.info(f"Running PRD Ingestion on text of length: {len(input_text)}")
         
-        # Invoke the chain
         result = await self.chain.ainvoke({"input_text": input_text})
         
         if not hasattr(result, 'confidence'):
