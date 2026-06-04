@@ -13,7 +13,8 @@ from uuid_utils import uuid4
 
 from orchestrator.graph.state import GraphState
 from core.agents.prd_ingestion import PRDIngestionAgent
-from core.agents.architecture_design import ArchitectureDesignAgent, ArchitectureDesignInput
+from core.agents.architecture_design import ArchitectureDesignAgent
+from core.agents.code_generation import CodeGenerationAgent
 import asyncio
 
 
@@ -117,16 +118,59 @@ def architecture_design_node(state: GraphState) -> Dict[str, Any]:
             "errors": [{"node": "architecture_design", "msg": str(e)}]
         }
 
+_code_agent = CodeGenerationAgent()
+
 def code_generation_node(state: GraphState) -> Dict[str, Any]:
-    """Phase 3: Code Generation Agent stub."""
-    logger.info("Executing Code Generation Agent (stub)")
-    return {
-        "code_artifact": {
-            "files": ["main.py", "models.py", "routes.py"],
-            "commit_hash": "abc123def456",
-            "branch": "feature/auto-generated-001"
+    """Phase 3: Code Generation Agent (REAL IMPLEMENTATION)"""
+    print("🟢 [NODE EXECUTING] code_generation_node (REAL LLM CALL)")
+    
+    # 1. Extract required data from state
+    design_doc = state.get("design_doc")
+    run_id = state.get("run_id", "")
+    project_id = state.get("project_id", "")
+    
+    if not design_doc:
+        print("⚠️ Warning: No design_doc found in state. Cannot generate code.")
+        return {"code_artifact": None, "errors": [{"node": "code_generation", "msg": "Missing design_doc"}]}
+
+    # Extract the artifact_id from the design_doc dict, or generate a new one
+    design_artifact_id = design_doc.get("artifact_id", str(uuid4()))
+
+    try:
+        # 2. Robust async execution from sync context (Python 3.10+ safe)
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            loop = None
+
+        input_data = {
+            "design_doc": design_doc,
+            "run_id": str(run_id),
+            "project_id": str(project_id),
+            "design_artifact_id": str(design_artifact_id)
         }
-    }
+
+        if loop is not None:
+            import concurrent.futures
+            with concurrent.futures.ThreadPoolExecutor() as pool:
+                result = pool.submit(asyncio.run, _code_agent.arun(input_data)).result()
+        else:
+            result = asyncio.run(_code_agent.arun(input_data))
+            
+        print(f"✅ Code Generation Agent Success: Generated {len(result.generated_files)} files across {len(result.modules_completed)} modules.")
+        
+        # 3. Return the artifact
+        return {
+            "code_artifact": result.model_dump(),
+            "errors": [] # Clear errors on success
+        }
+        
+    except Exception as e:
+        print(f"🔴 Code Generation Agent Failed: {e}")
+        return {
+            "code_artifact": None,
+            "errors": [{"node": "code_generation", "msg": str(e)}]
+        }
 
 def code_review_node(state: GraphState) -> Dict[str, Any]:
     """Phase 4: Code Review Agent stub."""
