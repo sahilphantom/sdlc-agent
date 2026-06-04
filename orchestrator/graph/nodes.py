@@ -83,33 +83,33 @@ def architecture_design_node(state: GraphState) -> Dict[str, Any]:
     spec_artifact_id = spec_json.get("artifact_id", str(uuid4()))
 
     try:
-        # 2. Run the agent
-        loop = asyncio.get_event_loop()
-        if loop.is_running():
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        loop = None
+
+    try:
+        # 🔧 FIX: Added spec_artifact_id to satisfy the ArchitectureDesignInput schema
+        input_data = {
+            "spec_json": spec_json, 
+            "run_id": str(run_id), 
+            "project_id": str(project_id),
+            "spec_artifact_id": str(spec_artifact_id) 
+        }
+
+        if loop is not None:
             import concurrent.futures
             with concurrent.futures.ThreadPoolExecutor() as pool:
-                result = pool.submit(asyncio.run, _arch_agent.arun(ArchitectureDesignInput(
-                    spec_json=spec_json,
-                    run_id=str(run_id),
-                    project_id=str(project_id),
-                    spec_artifact_id=str(spec_artifact_id)
-                ))).result()
+                result = pool.submit(asyncio.run, _arch_agent.arun(input_data)).result()
         else:
-            result = asyncio.run(_arch_agent.arun(ArchitectureDesignInput(
-                spec_json=spec_json,
-                run_id=str(run_id),
-                project_id=str(project_id),
-                spec_artifact_id=str(spec_artifact_id)
-            )))
+            result = asyncio.run(_arch_agent.arun(input_data))
             
-        print(f"✅ Architecture Agent Success: Designed {result.architecture_style} architecture with {len(result.tech_stack)} tech choices.")
+        print(f"✅ Architecture Agent Success: Generated design document.")
         
-        # 3. Return the artifact
         return {
             "design_doc": result.model_dump(),
-            "errors": [] # Clear errors on success
+            "errors": []
         }
-        
+    
     except Exception as e:
         print(f"🔴 Architecture Agent Failed: {e}")
         return {

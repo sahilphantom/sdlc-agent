@@ -2,12 +2,10 @@
 Phase 2: Architecture Design Agent
 
 Reads the SpecJSON and produces a complete system design (DesignDoc).
-Decides architecture style, selects tech stack, designs data model (ERD),
-defines API contracts, and produces an infrastructure blueprint.
 """
 
 import logging
-from typing import Dict, Any
+from typing import Dict, Any, Union
 
 from langchain_core.prompts import ChatPromptTemplate
 from pydantic import BaseModel, Field, ConfigDict
@@ -57,7 +55,7 @@ Be precise, technical, and aligned with modern best practices. If the SpecJSON i
             system_prompt=system_prompt
         )
         
-        base_llm = get_reasoning_model(temperature=0.2) # Slightly higher temp for creative design
+        base_llm = get_reasoning_model(temperature=0.2)
         self.llm = base_llm.with_structured_output(DesignDoc)
         
         self.prompt = ChatPromptTemplate.from_messages([
@@ -67,7 +65,12 @@ Be precise, technical, and aligned with modern best practices. If the SpecJSON i
         
         self.chain = self.prompt | self.llm
 
-    async def arun(self, input_data: ArchitectureDesignInput) -> DesignDoc:
+    # 🔧 FIX: Accept Union[dict, ArchitectureDesignInput] and normalize
+    async def arun(self, input_data: Union[Dict[str, Any], ArchitectureDesignInput]) -> DesignDoc:
+        # Normalize input to ArchitectureDesignInput instance if a dict was passed
+        if isinstance(input_data, dict):
+            input_data = ArchitectureDesignInput(**input_data)
+            
         logger.info("Running Architecture Design Agent...")
         
         result = await self.chain.ainvoke({
