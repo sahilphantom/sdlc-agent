@@ -9,9 +9,11 @@ end-to-end pipeline testing without real LLM calls.
 import logging
 from typing import Dict, Any
 from langgraph.types import interrupt
+from uuid_utils import uuid4
 
 from orchestrator.graph.state import GraphState
 from core.agents.prd_ingestion import PRDIngestionAgent
+from core.agents.architecture_design import ArchitectureDesignAgent, ArchitectureDesignInput
 import asyncio
 
 
@@ -61,17 +63,59 @@ def prd_ingestion_node(state: GraphState) -> Dict[str, Any]:
             "errors": [{"node": "prd_ingestion", "msg": str(e)}]
         }
 
+
+_arch_agent = ArchitectureDesignAgent()
+
 def architecture_design_node(state: GraphState) -> Dict[str, Any]:
-    """Phase 2: Architecture Design Agent stub."""
-    logger.info("Executing Architecture Design Agent (stub)")
-    return {
-        "design_doc": {
-            "tech_stack": ["FastAPI", "PostgreSQL", "React"],
-            "erd": "User 1--* Todo",
-            "openapi_spec": {"paths": {"/api/todos": {"get": {}}}},
-            "confidence": 0.90
+    """Phase 2: Architecture Design Agent (REAL IMPLEMENTATION)"""
+    print("🟢 [NODE EXECUTING] architecture_design_node (REAL LLM CALL)")
+    
+    # 1. Extract required data from state
+    spec_json = state.get("spec_json")
+    run_id = state.get("run_id", "")
+    project_id = state.get("project_id", "")
+    
+    if not spec_json:
+        print("⚠️ Warning: No spec_json found in state. Cannot design architecture.")
+        return {"design_doc": None, "errors": [{"node": "architecture_design", "msg": "Missing spec_json"}]}
+
+    # Extract the artifact_id from the spec_json dict
+    spec_artifact_id = spec_json.get("artifact_id", str(uuid4()))
+
+    try:
+        # 2. Run the agent
+        loop = asyncio.get_event_loop()
+        if loop.is_running():
+            import concurrent.futures
+            with concurrent.futures.ThreadPoolExecutor() as pool:
+                result = pool.submit(asyncio.run, _arch_agent.arun(ArchitectureDesignInput(
+                    spec_json=spec_json,
+                    run_id=str(run_id),
+                    project_id=str(project_id),
+                    spec_artifact_id=str(spec_artifact_id)
+                ))).result()
+        else:
+            result = asyncio.run(_arch_agent.arun(ArchitectureDesignInput(
+                spec_json=spec_json,
+                run_id=str(run_id),
+                project_id=str(project_id),
+                spec_artifact_id=str(spec_artifact_id)
+            )))
+            
+        print(f"✅ Architecture Agent Success: Designed {result.architecture_style} architecture with {len(result.tech_stack)} tech choices.")
+        
+        # 3. Return the artifact
+        return {
+            "design_doc": result.model_dump(),
+            "errors": [] # Clear errors on success
         }
-    }
+        
+    except Exception as e:
+        print(f"🔴 Architecture Agent Failed: {e}")
+        return {
+            "design_doc": None,
+            "errors": [{"node": "architecture_design", "msg": str(e)}]
+        }
 
 def code_generation_node(state: GraphState) -> Dict[str, Any]:
     """Phase 3: Code Generation Agent stub."""

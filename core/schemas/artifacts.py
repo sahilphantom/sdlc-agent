@@ -122,6 +122,16 @@ class BaseArtifact(BaseModel):
 
     model_config = {"frozen": False, "populate_by_name": True}
 
+    # 🔧 ADD THIS VALIDATOR TO FIX LLM CONFIDENCE SCALE ISSUES
+    @field_validator("confidence", mode="before")
+    @classmethod
+    def normalize_confidence(cls, v: Any) -> float:
+        """Auto-fix LLM returning 90 instead of 0.9"""
+        if isinstance(v, (int, float)):
+            if v > 1.0:
+                return float(v) / 100.0
+            return float(v)
+        return 0.8  # Safe default
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Shared sub-models
@@ -287,13 +297,36 @@ class SpecJSON(BaseArtifact):
     def functional_count(self) -> int:
         return sum(1 for r in self.requirements if r.category == "functional")
 
+    # 🔧 ADD THESE TWO VALIDATORS TO FIX LLM HALLUCINATIONS
+
+    @field_validator("estimated_complexity", mode="before")
+    @classmethod
+    def fix_complexity(cls, v: Any) -> str:
+        """Auto-fix LLM returning invalid enum values like ':'"""
+        valid = {"low", "medium", "high", "very_high"}
+        if not isinstance(v, str) or v.lower() not in valid:
+            return "medium"  # Safe default fallback
+        return v.lower()
+
+    @field_validator("requirements", mode="before")
+    @classmethod
+    def fix_requirement_ids(cls, v: Any) -> list[Any]:
+        """Auto-fix LLM putting descriptions in the 'id' field instead of REQ-001"""
+        if isinstance(v, list):
+            for i, req in enumerate(v):
+                if isinstance(req, dict):
+                    req_id = req.get("id", "")
+                    # If it doesn't start with REQ-, auto-generate a valid ID
+                    if not isinstance(req_id, str) or not req_id.startswith("REQ-"):
+                        req["id"] = f"REQ-{i+1:03d}"
+        return v
+
     @field_validator("estimated_complexity")
     @classmethod
     def valid_complexity(cls, v: str) -> str:
         if v not in ("low", "medium", "high", "very_high"):
             raise ValueError("estimated_complexity must be low | medium | high | very_high")
         return v
-
 
 # ─────────────────────────────────────────────────────────────────────────────
 # SCHEMA 2 — DesignDoc  (Phase 2: Architecture Design Agent)
