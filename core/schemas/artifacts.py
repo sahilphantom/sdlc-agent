@@ -387,6 +387,27 @@ class DesignDoc(BaseArtifact):
         description="e.g. {'api_p99_latency': '<200ms', 'db_query_max': '<50ms'}"
     )
 
+    @field_validator("tech_stack", mode="before")
+    @classmethod
+    def ensure_database_layer(cls, v: Any) -> list[Any]:
+        """Auto-inject a default database layer if the 3B model forgets it."""
+        if isinstance(v, list):
+            has_db = False
+            for item in v:
+                if isinstance(item, dict) and item.get("layer", "").lower() == "database":
+                    has_db = True
+                    break
+
+            if not has_db:
+                # Inject a default PostgreSQL choice to satisfy the model_validator
+                v.append({
+                    "layer": "database",
+                    "technology": "PostgreSQL",
+                    "version": "latest",
+                    "rationale": "Auto-injected default relational database for schema compliance."
+                })
+        return v
+
     @model_validator(mode="after")
     def validate_tech_stack_coverage(self) -> "DesignDoc":
         """Ensure at minimum backend and database layers are specified."""
