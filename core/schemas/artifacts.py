@@ -201,11 +201,15 @@ class SecurityFinding(BaseModel):
     auto_fixed:  bool     = Field(default=False, description="True if the agent auto-applied a fix")
     cwe_id:      str | None = Field(default=None, description="CWE identifier if applicable, e.g. CWE-89")
 
-    @field_validator("finding_id")
+    # 🔧 FIX: Change to mode="before" and auto-fix invalid IDs to prevent 3B model crashes
+    @field_validator("finding_id", mode="before")
     @classmethod
-    def id_format(cls, v: str) -> str:
-        if not any(v.startswith(p) for p in ("SEC-", "QUAL-", "VULN-", "DEP-")):
-            raise ValueError("finding_id must start with SEC-, QUAL-, VULN-, or DEP-")
+    def id_format(cls, v: Any) -> str:
+        if not isinstance(v, str):
+            v = str(v)
+        valid_prefixes = ("SEC-", "QUAL-", "VULN-", "DEP-")
+        if not any(v.startswith(p) for p in valid_prefixes):
+            return f"QUAL-{abs(hash(v)) % 1000:03d}" # Auto-generate a valid ID
         return v
 
 

@@ -15,6 +15,7 @@ from orchestrator.graph.state import GraphState
 from core.agents.prd_ingestion import PRDIngestionAgent
 from core.agents.architecture_design import ArchitectureDesignAgent
 from core.agents.code_generation import CodeGenerationAgent
+from core.agents.code_review import CodeReviewAgent
 import asyncio
 
 
@@ -172,20 +173,60 @@ def code_generation_node(state: GraphState) -> Dict[str, Any]:
             "errors": [{"node": "code_generation", "msg": str(e)}]
         }
 
+_review_agent = CodeReviewAgent()
+
 def code_review_node(state: GraphState) -> Dict[str, Any]:
-    """Phase 4: Code Review Agent stub."""
-    logger.info("Executing Code Review Agent (stub)")
-    # Simulate a mix of severities to test routing
-    # Change high_severity_count to >0 to test the security escalation gate
-    return {
-        "review_report": {
-            "high_severity_count": 0,  
-            "medium_severity_count": 1,
-            "low_severity_count": 2,
-            "issues": ["Missing docstring in main.py"],
-            "confidence": 0.85
+    """Phase 4: Code Review Agent (REAL IMPLEMENTATION)"""
+    print("🟢 [NODE EXECUTING] code_review_node (REAL LLM CALL)")
+    
+    # 1. Extract required data from state
+    code_artifact = state.get("code_artifact")
+    run_id = state.get("run_id", "")
+    project_id = state.get("project_id", "")
+    
+    if not code_artifact:
+        print("⚠️ Warning: No code_artifact found in state. Cannot review code.")
+        return {"review_report": None, "errors": [{"node": "code_review", "msg": "Missing code_artifact"}]}
+
+    # Extract the artifact_id from the code_artifact dict, or generate a new one
+    code_artifact_id = code_artifact.get("artifact_id", str(uuid4()))
+
+    try:
+        # 2. Robust async execution from sync context (Python 3.10+ safe)
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            loop = None
+
+        input_data = {
+            "code_artifact": code_artifact,
+            "run_id": str(run_id),
+            "project_id": str(project_id),
+            "code_artifact_id": str(code_artifact_id)
         }
-    }
+
+        if loop is not None:
+            import concurrent.futures
+            with concurrent.futures.ThreadPoolExecutor() as pool:
+                result = pool.submit(asyncio.run, _review_agent.arun(input_data)).result()
+        else:
+            result = asyncio.run(_review_agent.arun(input_data))
+            
+        gate_status = "TRIGGERED 🚨" if result.requires_human_gate else "CLEARED ✅"
+        print(f"✅ Code Review Agent Success: Score {result.security_score}/10. Human Gate: {gate_status}")
+        
+        # 3. Return the artifact
+        return {
+            "review_report": result.model_dump(),
+            "errors": [] # Clear errors on success
+        }
+        
+    except Exception as e:
+        print(f"🔴 Code Review Agent Failed: {e}")
+        return {
+            "review_report": None,
+            "errors": [{"node": "code_review", "msg": str(e)}]
+        }
 
 def test_execution_node(state: GraphState) -> Dict[str, Any]:
     """Phase 5: Test Execution Agent stub."""
