@@ -25,10 +25,13 @@ logger = logging.getLogger(__name__)
 
 
 
+_persistent_loop = None
+
 def run_async_safely(coro):
     """
     Bulletproof async runner for Python 3.10+.
-    Works whether called from a sync script (like evals) or an async framework (like FastAPI).
+    Reuses a persistent event loop to prevent 'Event loop is closed' errors 
+    when libraries cache loop-dependent clients (like httpx/Ollama).
     """
     try:
         loop = asyncio.get_running_loop()
@@ -36,10 +39,16 @@ def run_async_safely(coro):
         loop = None
         
     if loop is not None:
+        # Already in an async context (e.g., FastAPI), run in a thread
         with concurrent.futures.ThreadPoolExecutor() as pool:
             return pool.submit(asyncio.run, coro).result()
     else:
-        return asyncio.run(coro)
+        # Sync context: reuse a single persistent event loop
+        global _persistent_loop
+        if _persistent_loop is None or _persistent_loop.is_closed():
+            _persistent_loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(_persistent_loop)
+        return _persistent_loop.run_until_complete(coro)
 
 # ============================================================================
 # AGENT NODES (Stubs for Phase 1)
