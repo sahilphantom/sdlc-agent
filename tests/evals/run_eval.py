@@ -4,6 +4,12 @@ Runs the PRD → Review loop across the dataset and measures the acceptance rate
 """
 
 import sys
+import os
+
+# 🔧 FIX: Add the project root to sys.path so Python can find 'orchestrator' and 'core'
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
+
+
 import time
 import uuid
 from typing import Dict, Any
@@ -12,7 +18,7 @@ from orchestrator.graph import build_pipeline
 from orchestrator.graph.state import GraphState
 from langgraph.types import Command
 
-from evals.dataset import PRD_DATASET
+from dataset import PRD_DATASET
 
 
 def run_single_eval(prd: Dict[str, Any]) -> Dict[str, Any]:

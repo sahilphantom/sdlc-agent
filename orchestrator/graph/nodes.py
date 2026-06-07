@@ -8,6 +8,8 @@ end-to-end pipeline testing without real LLM calls.
 
 import logging
 from typing import Dict, Any
+import concurrent
+import concurrent
 from langgraph.types import interrupt
 from uuid_utils import uuid4
 
@@ -21,6 +23,24 @@ import asyncio
 
 logger = logging.getLogger(__name__)
 
+
+
+def run_async_safely(coro):
+    """
+    Bulletproof async runner for Python 3.10+.
+    Works whether called from a sync script (like evals) or an async framework (like FastAPI).
+    """
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        loop = None
+        
+    if loop is not None:
+        with concurrent.futures.ThreadPoolExecutor() as pool:
+            return pool.submit(asyncio.run, coro).result()
+    else:
+        return asyncio.run(coro)
+
 # ============================================================================
 # AGENT NODES (Stubs for Phase 1)
 # ============================================================================
@@ -28,205 +48,97 @@ logger = logging.getLogger(__name__)
 _prd_agent = PRDIngestionAgent()
 
 def prd_ingestion_node(state: GraphState) -> Dict[str, Any]:
-    """Phase 1: PRD Ingestion Agent (REAL IMPLEMENTATION)"""
     print("🟢 [NODE EXECUTING] prd_ingestion_node (REAL LLM CALL)")
-    
-    # 1. Extract input text from state
     input_data = state.get("input_data", {})
     raw_text = input_data.get("content", "")
     
     if not raw_text:
-        print("⚠️ Warning: No input text found in state.")
         return {"spec_json": None, "errors": [{"node": "prd_ingestion", "msg": "Empty input"}]}
 
-    # 2. Run the agent
     try:
-        # Pass a dictionary matching the PRDInput schema
-        loop = asyncio.get_event_loop()
-        if loop.is_running():
-            import concurrent.futures
-            with concurrent.futures.ThreadPoolExecutor() as pool:
-                result = pool.submit(asyncio.run, _prd_agent.arun({"input_text": raw_text})).result()
-        else:
-            result = asyncio.run(_prd_agent.arun({"input_text": raw_text}))
-            
+        result = run_async_safely(_prd_agent.arun({"input_text": raw_text}))
         print(f"✅ PRD Agent Success: Generated SpecJSON with {len(result.requirements)} requirements.")
-        
-        # 3. Return the artifact
-        return {
-            "spec_json": result.model_dump(),
-            "errors": [] # Clear errors on success
-        }
-        
+        return {"spec_json": result.model_dump(), "errors": []}
     except Exception as e:
         print(f"🔴 PRD Agent Failed: {e}")
-        return {
-            "spec_json": None,
-            "errors": [{"node": "prd_ingestion", "msg": str(e)}]
-        }
+        return {"spec_json": None, "errors": [{"node": "prd_ingestion", "msg": str(e)}]}
 
 
 _arch_agent = ArchitectureDesignAgent()
 
 def architecture_design_node(state: GraphState) -> Dict[str, Any]:
-    """Phase 2: Architecture Design Agent (REAL IMPLEMENTATION)"""
     print("🟢 [NODE EXECUTING] architecture_design_node (REAL LLM CALL)")
-    
-    # 1. Extract required data from state
     spec_json = state.get("spec_json")
     run_id = state.get("run_id", "")
     project_id = state.get("project_id", "")
     
     if not spec_json:
-        print("⚠️ Warning: No spec_json found in state. Cannot design architecture.")
         return {"design_doc": None, "errors": [{"node": "architecture_design", "msg": "Missing spec_json"}]}
 
-    # Extract the artifact_id from the spec_json dict
     spec_artifact_id = spec_json.get("artifact_id", str(uuid4()))
+    input_data = {
+        "spec_json": spec_json, "run_id": str(run_id), 
+        "project_id": str(project_id), "spec_artifact_id": str(spec_artifact_id)
+    }
 
     try:
-        loop = asyncio.get_running_loop()
-    except RuntimeError:
-        loop = None
-
-    try:
-        # 🔧 FIX: Added spec_artifact_id to satisfy the ArchitectureDesignInput schema
-        input_data = {
-            "spec_json": spec_json, 
-            "run_id": str(run_id), 
-            "project_id": str(project_id),
-            "spec_artifact_id": str(spec_artifact_id) 
-        }
-
-        if loop is not None:
-            import concurrent.futures
-            with concurrent.futures.ThreadPoolExecutor() as pool:
-                result = pool.submit(asyncio.run, _arch_agent.arun(input_data)).result()
-        else:
-            result = asyncio.run(_arch_agent.arun(input_data))
-            
+        result = run_async_safely(_arch_agent.arun(input_data))
         print(f"✅ Architecture Agent Success: Generated design document.")
-        
-        return {
-            "design_doc": result.model_dump(),
-            "errors": []
-        }
-    
+        return {"design_doc": result.model_dump(), "errors": []}
     except Exception as e:
         print(f"🔴 Architecture Agent Failed: {e}")
-        return {
-            "design_doc": None,
-            "errors": [{"node": "architecture_design", "msg": str(e)}]
-        }
+        return {"design_doc": None, "errors": [{"node": "architecture_design", "msg": str(e)}]}
 
 _code_agent = CodeGenerationAgent()
 
 def code_generation_node(state: GraphState) -> Dict[str, Any]:
-    """Phase 3: Code Generation Agent (REAL IMPLEMENTATION)"""
     print("🟢 [NODE EXECUTING] code_generation_node (REAL LLM CALL)")
-    
-    # 1. Extract required data from state
     design_doc = state.get("design_doc")
     run_id = state.get("run_id", "")
     project_id = state.get("project_id", "")
     
     if not design_doc:
-        print("⚠️ Warning: No design_doc found in state. Cannot generate code.")
         return {"code_artifact": None, "errors": [{"node": "code_generation", "msg": "Missing design_doc"}]}
 
-    # Extract the artifact_id from the design_doc dict, or generate a new one
     design_artifact_id = design_doc.get("artifact_id", str(uuid4()))
+    input_data = {
+        "design_doc": design_doc, "run_id": str(run_id), 
+        "project_id": str(project_id), "design_artifact_id": str(design_artifact_id)
+    }
 
     try:
-        # 2. Robust async execution from sync context (Python 3.10+ safe)
-        try:
-            loop = asyncio.get_running_loop()
-        except RuntimeError:
-            loop = None
-
-        input_data = {
-            "design_doc": design_doc,
-            "run_id": str(run_id),
-            "project_id": str(project_id),
-            "design_artifact_id": str(design_artifact_id)
-        }
-
-        if loop is not None:
-            import concurrent.futures
-            with concurrent.futures.ThreadPoolExecutor() as pool:
-                result = pool.submit(asyncio.run, _code_agent.arun(input_data)).result()
-        else:
-            result = asyncio.run(_code_agent.arun(input_data))
-            
+        result = run_async_safely(_code_agent.arun(input_data))
         print(f"✅ Code Generation Agent Success: Generated {len(result.generated_files)} files across {len(result.modules_completed)} modules.")
-        
-        # 3. Return the artifact
-        return {
-            "code_artifact": result.model_dump(),
-            "errors": [] # Clear errors on success
-        }
-        
+        return {"code_artifact": result.model_dump(), "errors": []}
     except Exception as e:
         print(f"🔴 Code Generation Agent Failed: {e}")
-        return {
-            "code_artifact": None,
-            "errors": [{"node": "code_generation", "msg": str(e)}]
-        }
+        return {"code_artifact": None, "errors": [{"node": "code_generation", "msg": str(e)}]}
 
 _review_agent = CodeReviewAgent()
 
 def code_review_node(state: GraphState) -> Dict[str, Any]:
-    """Phase 4: Code Review Agent (REAL IMPLEMENTATION)"""
     print("🟢 [NODE EXECUTING] code_review_node (REAL LLM CALL)")
-    
-    # 1. Extract required data from state
     code_artifact = state.get("code_artifact")
     run_id = state.get("run_id", "")
     project_id = state.get("project_id", "")
     
     if not code_artifact:
-        print("⚠️ Warning: No code_artifact found in state. Cannot review code.")
         return {"review_report": None, "errors": [{"node": "code_review", "msg": "Missing code_artifact"}]}
 
-    # Extract the artifact_id from the code_artifact dict, or generate a new one
     code_artifact_id = code_artifact.get("artifact_id", str(uuid4()))
+    input_data = {
+        "code_artifact": code_artifact, "run_id": str(run_id), 
+        "project_id": str(project_id), "code_artifact_id": str(code_artifact_id)
+    }
 
     try:
-        # 2. Robust async execution from sync context (Python 3.10+ safe)
-        try:
-            loop = asyncio.get_running_loop()
-        except RuntimeError:
-            loop = None
-
-        input_data = {
-            "code_artifact": code_artifact,
-            "run_id": str(run_id),
-            "project_id": str(project_id),
-            "code_artifact_id": str(code_artifact_id)
-        }
-
-        if loop is not None:
-            import concurrent.futures
-            with concurrent.futures.ThreadPoolExecutor() as pool:
-                result = pool.submit(asyncio.run, _review_agent.arun(input_data)).result()
-        else:
-            result = asyncio.run(_review_agent.arun(input_data))
-            
+        result = run_async_safely(_review_agent.arun(input_data))
         gate_status = "TRIGGERED 🚨" if result.requires_human_gate else "CLEARED ✅"
         print(f"✅ Code Review Agent Success: Score {result.security_score}/10. Human Gate: {gate_status}")
-        
-        # 3. Return the artifact
-        return {
-            "review_report": result.model_dump(),
-            "errors": [] # Clear errors on success
-        }
-        
+        return {"review_report": result.model_dump(), "errors": []}
     except Exception as e:
         print(f"🔴 Code Review Agent Failed: {e}")
-        return {
-            "review_report": None,
-            "errors": [{"node": "code_review", "msg": str(e)}]
-        }
+        return {"review_report": None, "errors": [{"node": "code_review", "msg": str(e)}]}
 
 def test_execution_node(state: GraphState) -> Dict[str, Any]:
     """Phase 5: Test Execution Agent stub."""
