@@ -13,6 +13,7 @@ import concurrent
 from langgraph.types import interrupt
 from uuid_utils import uuid4
 
+from core.agents.test_execution import TestExecutionAgent
 from orchestrator.graph.state import GraphState
 from core.agents.prd_ingestion import PRDIngestionAgent
 from core.agents.architecture_design import ArchitectureDesignAgent
@@ -149,17 +150,58 @@ def code_review_node(state: GraphState) -> Dict[str, Any]:
         print(f"🔴 Code Review Agent Failed: {e}")
         return {"review_report": None, "errors": [{"node": "code_review", "msg": str(e)}]}
 
+_test_agent = TestExecutionAgent()
+
 def test_execution_node(state: GraphState) -> Dict[str, Any]:
-    """Phase 5: Test Execution Agent stub."""
-    logger.info("Executing Test Execution Agent (stub)")
-    return {
-        "test_report": {
-            "passed": True,
-            "coverage": 0.85,
-            "failed_tests": [],
-            "flaky_tests": []
-        }
+    """Phase 5: Test Execution Agent (REAL IMPLEMENTATION)"""
+    print("🟢 [NODE EXECUTING] test_execution_node (REAL LLM CALL)")
+    
+    code_artifact = state.get("code_artifact")
+    review_report = state.get("review_report")
+    run_id = state.get("run_id", "")
+    project_id = state.get("project_id", "")
+    retry_count = state.get("retry_count", 0)
+    
+    if not code_artifact:
+        print("⚠️ Warning: No code_artifact found in state. Cannot run tests.")
+        return {"test_report": None, "errors": [{"node": "test_execution", "msg": "Missing code_artifact"}]}
+    
+    if not review_report:
+        print("⚠️ Warning: No review_report found in state. Using empty review report.")
+        review_report = {}
+
+    code_artifact_id = code_artifact.get("artifact_id", str(uuid4()))
+    review_artifact_id = review_report.get("artifact_id", str(uuid4()))
+    
+    input_data = {
+        "code_artifact": code_artifact,
+        "review_report": review_report,
+        "run_id": str(run_id),
+        "project_id": str(project_id),
+        "code_artifact_id": str(code_artifact_id),
+        "review_artifact_id": str(review_artifact_id)
     }
+
+    try:
+        result = run_async_safely(_test_agent.arun(input_data))
+        
+        retry_status = "RETRY NEEDED 🔄" if result.needs_code_retry else "ALL TESTS PASSED ✅"
+        print(f"✅ Test Execution Agent Success: {result.passed_tests}/{result.total_tests} tests passed. Coverage: {result.coverage_percent}%. Status: {retry_status}")
+        
+        new_retry_count = retry_count + 1 if result.needs_code_retry else retry_count
+        
+        return {
+            "test_report": result.model_dump(),
+            "retry_count": new_retry_count,
+            "errors": []
+        }
+        
+    except Exception as e:
+        print(f"🔴 Test Execution Agent Failed: {e}")
+        return {
+            "test_report": None,
+            "errors": [{"node": "test_execution", "msg": str(e)}]
+        }
 
 def cicd_orchestration_node(state: GraphState) -> Dict[str, Any]:
     """Phase 6: CI/CD Orchestration Agent stub."""

@@ -30,14 +30,18 @@ from config.settings import settings
 
 def should_retry_code_generation(state: GraphState) -> Literal["code_generation", "cicd_orchestration"]:
     """
-    Conditional edge: Route back to code generation if tests fail.
+    Conditional edge: Route back to code generation if tests fail or coverage is low.
     Max 3 retries before proceeding to CI/CD anyway.
     """
     test_report = state.get("test_report")
     retry_count = state.get("retry_count", 0)
     
-    if test_report and not test_report.get("passed", True) and retry_count < settings.sdlc_max_retries:
-        return "code_generation"
+    if test_report:
+        needs_retry = test_report.get("needs_code_retry", False)
+        if needs_retry and retry_count < settings.sdlc_max_retries:
+            print(f"🔄 Retry {retry_count + 1}/{settings.sdlc_max_retries}: Routing back to code generation")
+            return "code_generation"
+    
     return "cicd_orchestration"
 
 
