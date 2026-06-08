@@ -52,12 +52,12 @@ def intent_classifier_node(state: GraphState) -> Dict[str, Any]:
         if result.clarification_needed:
             return {
                 "errors": [{"node": "intent_classifier", "msg": result.clarification_question}],
-                "is_complete": True # Halt pipeline
+                "is_complete": True
             }
             
         return {
-            "execution_mode": result.mode.value,
-            "active_agents": result.active_agents,
+            "execution_mode": result.mode.value,       # <-- Must match GraphState key
+            "active_agents": result.active_agents,     # <-- Must match GraphState key
             "project_id": result.project_id,
             "errors": []
         }

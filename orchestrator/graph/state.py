@@ -2,7 +2,6 @@
 LangGraph State Definition
 
 Defines the GraphState TypedDict that carries data through the entire pipeline.
-All artifacts are optional since they're generated progressively by each agent.
 """
 
 from typing import TypedDict, Optional, Dict, Any, List
@@ -11,9 +10,6 @@ from typing import TypedDict, Optional, Dict, Any, List
 class GraphState(TypedDict, total=False):
     """
     State that flows through the LangGraph pipeline.
-    
-    All artifact fields are optional (total=False) because they're populated
-    progressively as each agent node executes.
     """
     
     # =========================================================================
@@ -27,19 +23,25 @@ class GraphState(TypedDict, total=False):
     # =========================================================================
     # Input Data
     # =========================================================================
-    input_data: Dict[str, Any]  # {"type": "prd_text", "content": "..."}
+    input_data: Dict[str, Any]
+    
+    # =========================================================================
+    # Intent Routing State (Section 11)
+    # =========================================================================
+    execution_mode: Optional[str]      # e.g., "full_pipeline", "refactor"
+    active_agents: Optional[List[int]] # e.g., [3, 4, 5]
     
     # =========================================================================
     # Agent Artifacts (generated progressively)
     # =========================================================================
-    spec_json: Optional[Dict[str, Any]]  # Phase 1: PRD Ingestion
-    design_doc: Optional[Dict[str, Any]]  # Phase 2: Architecture Design
-    code_artifact: Optional[Dict[str, Any]]  # Phase 3: Code Generation
-    review_report: Optional[Dict[str, Any]]  # Phase 4: Code Review
-    test_report: Optional[Dict[str, Any]]  # Phase 5: Test Execution
-    build_report: Optional[Dict[str, Any]]  # Phase 6: CI/CD
-    deployment_report: Optional[Dict[str, Any]]  # Phase 7: Deployment
-    ops_report: Optional[Dict[str, Any]]  # Phase 8: Operations
+    spec_json: Optional[Dict[str, Any]]
+    design_doc: Optional[Dict[str, Any]]
+    code_artifact: Optional[Dict[str, Any]]
+    review_report: Optional[Dict[str, Any]]
+    test_report: Optional[Dict[str, Any]]
+    build_report: Optional[Dict[str, Any]]
+    deployment_report: Optional[Dict[str, Any]]
+    ops_report: Optional[Dict[str, Any]]
     
     # =========================================================================
     # Human Gate State
