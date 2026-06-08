@@ -46,8 +46,13 @@ def run_demo_pipeline():
     initial_state: GraphState = {
         "project_id": "demo-project-001",
         "run_id": "demo-run-001",
-        "input_data": {"type": "prd_text", "content": "Build a REST API for a todo application."},
-        "mode": "full_pipeline",
+        "input_data": {
+            "type": "text",
+            "content": "Refactor this codebase to improve performance and add type hints.",
+            "has_file": True,
+            "file_type": "zip"
+        },
+        "mode": "full_pipeline", # Will be overwritten by intent classifier
         "retry_count": 0,
     }
     

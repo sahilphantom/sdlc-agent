@@ -24,6 +24,8 @@ from orchestrator.graph.nodes import (
     security_escalation_gate,
     production_deployment_gate,
     production_patch_gate,
+    intent_classifier_node,
+    input_adapter_node,
 )
 from config.settings import settings
 
@@ -73,6 +75,35 @@ def should_gate_production_deployment(state: GraphState) -> Literal["production_
     return "deployment"
 
 
+def route_by_intent(state: GraphState) -> str:
+    """
+    Conditional edge: Route from Input Adapter to the correct subgraph entry point
+    based on the Intent Classifier's decision.
+    """
+    mode = state.get("execution_mode", "full_pipeline")
+    errors = state.get("errors", [])
+    
+    # If classification failed or needs clarification, go to END
+    if errors:
+        return "END"
+        
+    # Route to the correct starting node based on Section 11.2 of Execution Plan
+    if mode in ["full_pipeline", "architecture_only"]:
+        return "prd_ingestion"
+    elif mode in ["refactor", "fix_and_patch"]:
+        return "code_generation"  # Starts at code gen with mock design doc injected by adapter
+    elif mode in ["test_only"]:
+        return "test_execution"
+    elif mode in ["code_review_only"]:
+        return "code_review"
+    elif mode in ["deploy_only"]:
+        return "cicd_orchestration"
+    elif mode in ["frontend_only"]:
+        return "architecture_design"
+        
+    return "prd_ingestion"  # Fallback
+
+
 def build_pipeline(use_postgres: bool = False):
     """
     Build and compile the complete SDLC LangGraph pipeline.
@@ -86,6 +117,10 @@ def build_pipeline(use_postgres: bool = False):
     """
     # Initialize the graph
     workflow = StateGraph(GraphState)
+
+    # 1. Add ALL nodes (including new routing nodes)
+    workflow.add_node("intent_classifier", intent_classifier_node)
+    workflow.add_node("input_adapter", input_adapter_node)
     
     # Add all 8 agent nodes
     workflow.add_node("prd_ingestion", prd_ingestion_node)
@@ -103,24 +138,31 @@ def build_pipeline(use_postgres: bool = False):
     workflow.add_node("production_deployment_gate", production_deployment_gate)
     workflow.add_node("production_patch_gate", production_patch_gate)
     
-    # Define edges - the flow of the pipeline
+    # 2. Wire the Entry and Routing Edges
+    workflow.set_entry_point("intent_classifier")
+    workflow.add_edge("intent_classifier", "input_adapter")
     
-    # Entry point
-    workflow.set_entry_point("prd_ingestion")
+    # Conditional edge from input_adapter to the correct subgraph entry point
+    workflow.add_conditional_edges(
+        "input_adapter",
+        route_by_intent,
+        {
+            "prd_ingestion": "prd_ingestion",
+            "architecture_design": "architecture_design",
+            "code_generation": "code_generation",
+            "code_review": "code_review",
+            "test_execution": "test_execution",
+            "cicd_orchestration": "cicd_orchestration",
+            "END": END
+        }
+    )
     
-    # Linear flow: PRD → Architecture
+    # 3. Wire the Core Pipeline Edges (Full Pipeline Flow)
     workflow.add_edge("prd_ingestion", "architecture_design")
-    
-    # Architecture → Human Gate (mandatory)
     workflow.add_edge("architecture_design", "architecture_approval_gate")
-    
-    # After approval → Code Generation
     workflow.add_edge("architecture_approval_gate", "code_generation")
-    
-    # Code Generation → Code Review
     workflow.add_edge("code_generation", "code_review")
     
-    # Code Review → Conditional (Security Gate or Test Execution)
     workflow.add_conditional_edges(
         "code_review",
         should_escalate_security,
@@ -130,10 +172,8 @@ def build_pipeline(use_postgres: bool = False):
         }
     )
     
-    # Security Gate → Test Execution (after human review)
     workflow.add_edge("security_escalation_gate", "test_execution")
     
-    # Test Execution → Conditional (Retry to Code Gen or proceed to CI/CD)
     workflow.add_conditional_edges(
         "test_execution",
         should_retry_code_generation,
@@ -143,7 +183,6 @@ def build_pipeline(use_postgres: bool = False):
         }
     )
     
-    # CI/CD → Conditional (Production Gate or Deployment)
     workflow.add_conditional_edges(
         "cicd_orchestration",
         should_gate_production_deployment,
@@ -153,16 +192,11 @@ def build_pipeline(use_postgres: bool = False):
         }
     )
     
-    # Production Gate → Deployment (after human approval)
     workflow.add_edge("production_deployment_gate", "deployment")
-    
-    # Deployment → Ops & Maintenance
     workflow.add_edge("deployment", "ops_maintenance")
-    
-    # Ops → End
     workflow.add_edge("ops_maintenance", END)
     
-    # Configure checkpointer
+    # 4. Configure checkpointer
     if use_postgres:
         # Production: Use PostgreSQL for persistent checkpointing
         checkpointer = PostgresSaver.from_conn_string(settings.database_url)
