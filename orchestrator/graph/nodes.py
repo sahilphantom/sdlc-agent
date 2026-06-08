@@ -13,6 +13,7 @@ import concurrent
 from langgraph.types import interrupt
 from uuid_utils import uuid4
 
+from core.agents.intent_classifier import IntentClassifierAgent
 from core.agents.test_execution import TestExecutionAgent
 from orchestrator.graph.state import GraphState
 from core.agents.prd_ingestion import PRDIngestionAgent
@@ -27,6 +28,77 @@ logger = logging.getLogger(__name__)
 
 
 _persistent_loop = None
+
+_intent_agent = IntentClassifierAgent()
+
+def intent_classifier_node(state: GraphState) -> Dict[str, Any]:
+    """Step 1: Classify user intent and determine execution mode."""
+    print("🟢 [NODE EXECUTING] intent_classifier_node")
+    
+    input_data = state.get("input_data", {})
+    user_message = input_data.get("content", "")
+    has_file = input_data.get("has_file", False)
+    file_type = input_data.get("file_type", "none")
+    
+    try:
+        result = run_async_safely(_intent_agent.arun({
+            "user_message": user_message,
+            "has_file": has_file,
+            "file_type": file_type
+        }))
+        
+        print(f"✅ Intent Classified: Mode={result.mode.value}, Agents={result.active_agents}")
+        
+        if result.clarification_needed:
+            return {
+                "errors": [{"node": "intent_classifier", "msg": result.clarification_question}],
+                "is_complete": True # Halt pipeline
+            }
+            
+        return {
+            "execution_mode": result.mode.value,
+            "active_agents": result.active_agents,
+            "project_id": result.project_id,
+            "errors": []
+        }
+    except Exception as e:
+        print(f"🔴 Intent Classifier Failed: {e}")
+        return {"errors": [{"node": "intent_classifier", "msg": str(e)}]}
+
+
+def input_adapter_node(state: GraphState) -> Dict[str, Any]:
+    """Step 2: Normalize input based on the determined execution mode."""
+    print(f"🟢 [NODE EXECUTING] input_adapter_node for mode: {state.get('execution_mode')}")
+    
+    mode = state.get("execution_mode", "full_pipeline")
+    input_data = state.get("input_data", {})
+    project_id = state.get("project_id", "default-project")
+    run_id = state.get("run_id", "run-001")
+    
+    # For this demo, we simulate the Input Adapter preparing the state
+    # In production, this is where ZIP extraction and Tree-sitter parsing happens
+    adapted_state = {
+        "project_id": project_id,
+        "run_id": run_id,
+        "mode": mode,
+        "input_data": input_data,
+        "errors": []
+    }
+    
+    # If it's a refactor/test/review mode, we might inject mock existing code state 
+    # so the downstream agents don't fail looking for a design_doc
+    if mode in ["refactor", "test_only", "code_review_only", "fix_and_patch"]:
+        print("  ↳ Adapting input for existing codebase mode (injecting mock design_doc)")
+        adapted_state["design_doc"] = {
+            "artifact_id": "mock-design-123",
+            "architecture_style": "monolith",
+            "tech_stack": [{"layer": "backend", "technology": "Python", "rationale": "Existing"}],
+            "data_model": [],
+            "api_endpoints": []
+        }
+        
+    print("✅ Input Adapted successfully")
+    return adapted_state
 
 def run_async_safely(coro):
     """
