@@ -13,6 +13,7 @@ import concurrent
 from langgraph.types import interrupt
 from uuid_utils import uuid4
 
+from core.agents.cicd_orchestration import CICDOrchestrationAgent
 from core.agents.intent_classifier import IntentClassifierAgent
 from core.agents.test_execution import TestExecutionAgent
 from orchestrator.graph.state import GraphState
@@ -275,16 +276,47 @@ def test_execution_node(state: GraphState) -> Dict[str, Any]:
             "errors": [{"node": "test_execution", "msg": str(e)}]
         }
 
+_cicd_agent = CICDOrchestrationAgent()
+
 def cicd_orchestration_node(state: GraphState) -> Dict[str, Any]:
-    """Phase 6: CI/CD Orchestration Agent stub."""
-    logger.info("Executing CI/CD Orchestration Agent (stub)")
-    return {
-        "build_report": {
-            "status": "success",
-            "target_environment": "staging",  # Change to "production" to test prod gate
-            "build_id": "build-9876"
-        }
+    """Phase 6: CI/CD Orchestration Agent (REAL IMPLEMENTATION)"""
+    print("🟢 [NODE EXECUTING] cicd_orchestration_node (REAL LLM CALL)")
+    
+    test_report = state.get("test_report")
+    run_id = state.get("run_id", "")
+    project_id = state.get("project_id", "")
+    
+    if not test_report:
+        print("⚠️ Warning: No test_report found in state. Cannot orchestrate CI/CD.")
+        return {"build_report": None, "errors": [{"node": "cicd_orchestration", "msg": "Missing test_report"}]}
+
+    test_artifact_id = test_report.get("artifact_id", str(uuid4()))
+    
+    input_data = {
+        "test_report": test_report,
+        "run_id": str(run_id),
+        "project_id": str(project_id),
+        "test_artifact_id": str(test_artifact_id)
     }
+
+    try:
+        result = run_async_safely(_cicd_agent.arun(input_data))
+        
+        env = result.target_environment
+        approved = "APPROVED ✅" if result.promotion_approved else "PENDING GATE 🚧"
+        print(f"✅ CI/CD Agent Success: Build {result.build_status.value}. Target: {env}. Promotion: {approved}")
+        
+        return {
+            "build_report": result.model_dump(),
+            "errors": []
+        }
+        
+    except Exception as e:
+        print(f"🔴 CI/CD Orchestration Agent Failed: {e}")
+        return {
+            "build_report": None,
+            "errors": [{"node": "cicd_orchestration", "msg": str(e)}]
+        }
 
 def deployment_node(state: GraphState) -> Dict[str, Any]:
     """Phase 7: Deployment Agent stub."""
