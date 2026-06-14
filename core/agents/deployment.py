@@ -44,7 +44,7 @@ You must output a complete DeploymentReport. CRITICAL FORMATTING RULES:
 4. Copy `environment` from the BuildReport's `target_environment` (e.g., "staging" or "production").
 5. Set `deployment_strategy` to one of: "blue_green", "canary", "rolling", or "recreate".
 6. Set `docker_image` to the `docker_image_tag` from the BuildReport.
-7. Set `pulumi_stack` to "sdlc-agent/{environment}".
+7. Set `pulumi_stack` to "sdlc-agent/{{environment}}".
 8. Set `deployment_status` to "PASSED" (or "FAILED" if simulating a rollback).
 9. Generate a realistic `pulumi_preview` string (e.g., "Resources: +3 to create, ~0 to update, 0 to delete").
 10. List 2-3 items in `resources_created` (e.g., ["aws_ecs_service:main", "aws_alb:frontend"]).
