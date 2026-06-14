@@ -21,6 +21,7 @@ from core.agents.prd_ingestion import PRDIngestionAgent
 from core.agents.architecture_design import ArchitectureDesignAgent
 from core.agents.code_generation import CodeGenerationAgent
 from core.agents.code_review import CodeReviewAgent
+from core.agents.deployment import DeploymentAgent
 import asyncio
 
 
