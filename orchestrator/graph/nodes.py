@@ -318,16 +318,47 @@ def cicd_orchestration_node(state: GraphState) -> Dict[str, Any]:
             "errors": [{"node": "cicd_orchestration", "msg": str(e)}]
         }
 
+_deploy_agent = DeploymentAgent()
+
 def deployment_node(state: GraphState) -> Dict[str, Any]:
-    """Phase 7: Deployment Agent stub."""
-    logger.info("Executing Deployment Agent (stub)")
-    return {
-        "deployment_report": {
-            "status": "deployed",
-            "url": "https://staging.example.com",
-            "health_check": "passing"
-        }
+    """Phase 7: Deployment Agent (REAL IMPLEMENTATION)"""
+    print("🟢 [NODE EXECUTING] deployment_node (REAL LLM CALL)")
+    
+    build_report = state.get("build_report")
+    run_id = state.get("run_id", "")
+    project_id = state.get("project_id", "")
+    
+    if not build_report:
+        print("⚠️ Warning: No build_report found in state. Cannot deploy.")
+        return {"deployment_report": None, "errors": [{"node": "deployment", "msg": "Missing build_report"}]}
+
+    build_artifact_id = build_report.get("artifact_id", str(uuid4()))
+    
+    input_data = {
+        "build_report": build_report,
+        "run_id": str(run_id),
+        "project_id": str(project_id),
+        "build_artifact_id": str(build_artifact_id)
     }
+
+    try:
+        result = run_async_safely(_deploy_agent.arun(input_data))
+        
+        env = result.environment
+        status = "SUCCESS ✅" if result.deployment_status == "PASSED" else "FAILED/ROLLED BACK 🚨"
+        print(f"✅ Deployment Agent Success: Deployed to {env} via {result.deployment_strategy.value}. Health Checks: {status}")
+        
+        return {
+            "deployment_report": result.model_dump(),
+            "errors": []
+        }
+        
+    except Exception as e:
+        print(f"🔴 Deployment Agent Failed: {e}")
+        return {
+            "deployment_report": None,
+            "errors": [{"node": "deployment", "msg": str(e)}]
+        }
 
 def ops_maintenance_node(state: GraphState) -> Dict[str, Any]:
     """Phase 8: Operations & Maintenance Agent stub."""
